@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"log"
+	"net/url"
 	"os"
 
 	"github.com/jackc/pgx/v5"
@@ -14,17 +14,32 @@ import (
 //go:embed setup.sql
 var setupSQL string
 
+func databaseURLFromEnv() (string, error) {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(os.Getenv("DB_USERNAME"), os.Getenv("DB_PASSWORD")),
+		Host:   os.Getenv("DB_HOSTNAME"),
+		Path:   os.Getenv("DB_DATABASE"),
+	}
+	return u.String(), nil
+}
+
 func setup() {
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	databaseURL, err := databaseURLFromEnv()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		log.Fatalf("Failed to get database url: %s", err)
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
 		os.Exit(1)
 	}
 
 	defer conn.Close(context.Background())
 
 	if _, err := conn.Exec(context.Background(), setupSQL); err != nil {
-		log.Fatalf("failed to setup database: %s", err)
+		log.Fatalf("Failed to setup database: %s", err)
 	}
 }
 
@@ -34,7 +49,12 @@ func lookup() {
 		log.Fatalf("failed to get ip: %s", err)
 	}
 
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	databaseURL, err := databaseURLFromEnv()
+	if err != nil {
+		log.Fatalf("Failed to get database url: %s", err)
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %s", err)
 	}
